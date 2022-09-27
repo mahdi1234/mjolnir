@@ -98,6 +98,60 @@ class PolicyList extends EventEmitter {
     }
 
     /**
+     * Create a new policy list.
+     * @param client A MatrixClient that will be used to create the list.
+     * @param shortcode A shortcode to refer to the list with.
+     * @param invite A list of users to invite to the list and make moderator.
+     * @param createRoomOptions Additional room create options such as an alias.
+     * @returns The room id for the newly created policy list.
+     */
+    public static async createList(
+        client: MatrixClient,
+        shortcode: string,
+        invite: string[],
+        createRoomOptions = {}
+    ): Promise<string /* room id */> {
+        const powerLevels: { [key: string]: any } = {
+            "ban": 50,
+            "events": {
+                "m.room.name": 100,
+                "m.room.power_levels": 100,
+            },
+            "events_default": 50, // non-default
+            "invite": 0,
+            "kick": 50,
+            "notifications": {
+                "room": 20,
+            },
+            "redact": 50,
+            "state_default": 50,
+            "users": {
+                [await client.getUserId()]: 100,
+                ...invite.reduce((users, mxid) => ({...users,  [mxid]: 50 }), {}),
+            },
+            "users_default": 0,
+        };
+        const listRoomId = await client.createRoom({
+            // Support for MSC3784.
+            creation_content: {
+                type: 'support.feline.policy.lists.msc.v1'
+            },
+            preset: "public_chat",
+            invite,
+            initial_state: [
+                {
+                    type: SHORTCODE_EVENT_TYPE,
+                    state_key: "",
+                    content: {shortcode: shortcode}
+                }
+            ],
+            power_level_content_override: powerLevels,
+            ...createRoomOptions
+        });
+        return listRoomId
+    }
+
+    /**
      * The code that can be used to refer to this banlist in Mjolnir commands.
      */
     public get listShortcode(): string {
