@@ -7,6 +7,7 @@ import { getFirstReaction } from "./commands/commandUtils";
 import { getMessagesByUserIn } from "../../src/utils";
 import { Mjolnir } from "../../src/Mjolnir";
 import { ALL_RULE_TYPES, RULE_SERVER, RULE_USER, SERVER_RULE_TYPES } from "../../src/models/ListRule";
+import { randomUUID } from "crypto";
 
 /**
  * Create a policy rule in a policy room.
@@ -455,5 +456,33 @@ describe('Test: should apply bans to the most recently active rooms first', func
             assert.equal(roomAclEvent.origin_server_ts > last_event_ts, true, `This room was more recently active so should have the more recent timestamp`);
             last_event_ts = roomAclEvent.origin_server_ts;
         }
+    })
+})
+
+describe('Test: Creating policy lists.', function() {
+    it('Will automatically invite and op users from invites', async function() {
+        const mjolnir: Mjolnir = this.mjolnir;
+        const testUsers = await Promise.all([...Array(2)].map(_ => newTestUser(this.config.homeserverUrl, { name: { contains: "moderator" } })))
+        const invite = await Promise.all(testUsers.map(client => client.getUserId()));
+        const policyListId = await PolicyList.createList(
+            mjolnir.client,
+            randomUUID(),
+            invite
+        );
+        // Check power levels are right.
+        const powerLevelEvent = await mjolnir.client.getRoomStateEvent(policyListId, "m.room.power_levels", "");
+        assert.equal(Object.keys(powerLevelEvent.users ?? {}).length, invite.length + 1);
+        // Check create event for MSC3784 support.
+        const createEvent = await mjolnir.client.getRoomStateEvent(policyListId, "m.room.create", "");
+        assert.equal(createEvent.type, PolicyList.ROOM_TYPE);
+        // We can't create rooms without forgetting the type.
+        await assert.rejects(
+            async () => {
+                await PolicyList.createList(mjolnir.client, randomUUID(), [], {
+                    creation_content: {}
+                })
+            },
+            TypeError
+        );
     })
 })
